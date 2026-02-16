@@ -1,12 +1,18 @@
 import "./style.css";
 import { setupPWA } from "./sw-register";
+import { createFxCanvas, haptic, makeParticleSystem, sfxChoice, sfxGameOver, sfxTick } from "./fx";
 import {
   applyChoice,
   defaultResources,
   getTitle,
   loadBestTurns,
+  loadDailyBest,
   makeShareText,
+  mulberry32,
   pickCard,
+  seedFromString,
+  yyyymmdd,
+  type GameMode,
   type GameState,
 } from "./game";
 
@@ -58,6 +64,7 @@ el.app.innerHTML = `
       </div>
 
       <footer class="footer">
+        <button id="btnMode" class="ghost">模式：經典</button>
         <button id="btnRestart" class="ghost">重新開始</button>
         <button id="btnShare" class="ghost">分享結果</button>
         <button id="btnHow" class="ghost">玩法</button>
@@ -94,6 +101,7 @@ const ui = {
   valProg: $("#valProg"),
   valStress: $("#valStress"),
   valRep: $("#valRep"),
+  btnMode: $("#btnMode"),
   btnRestart: $("#btnRestart"),
   btnShare: $("#btnShare"),
   btnHow: $("#btnHow"),
@@ -103,9 +111,13 @@ const ui = {
   btnModalOk: $("#btnModalOk"),
 };
 
+const fx = createFxCanvas();
+const particles = makeParticleSystem(fx.g);
+
 let state: GameState;
 let timerId: number | null = null;
 let endsAt = 0;
+let lastTickSec = 999;
 
 function setBar(el: HTMLElement, valEl: HTMLElement, value: number, kind: "cash" | "progress" | "stress" | "rep") {
   el.style.width = `${value}%`;
@@ -146,25 +158,44 @@ function render() {
 
   if (state.over) {
     stopTimer();
+    sfxGameOver();
+    haptic('fail');
+
     const title = getTitle(state.turn, state.resources, state.overReason);
+    const modeLine = state.mode === 'daily' ? `每日挑戰：${state.dateKey}（今日最佳 ${Math.max(state.dailyBestTurns, state.turn)}）<br/>` : '';
+
     showModal(
       title,
-      `你撐了 <b>${state.turn}</b> 回合。<br/>` +
+      `${modeLine}` +
+        `你撐了 <b>${state.turn}</b> 回合。<br/>` +
         `現金 ${state.resources.cash}｜進度 ${state.resources.progress}｜壓力 ${state.resources.stress}｜名聲 ${state.resources.rep}<br/><br/>` +
         `要不要分享你的結果？（也可以按「重新開始」再一局）`
     );
   }
 }
 
-function startNewGame() {
-  state = {
+function makeState(mode: GameMode): GameState {
+  const dateKey = yyyymmdd();
+  const seed = seedFromString(`ss20:${dateKey}`);
+  const rng = mode === 'daily' ? mulberry32(seed) : Math.random;
+
+  return {
+    mode,
+    dateKey,
     turn: 0,
     timePerTurnSec: TIME_PER_TURN_SEC,
     resources: defaultResources(),
-    card: pickCard(),
+    card: pickCard(undefined, rng),
     bestTurns: loadBestTurns(),
+    dailyBestTurns: loadDailyBest(dateKey),
     over: false,
+    rng,
   };
+}
+
+function startNewGame(mode: GameMode = state?.mode ?? 'classic') {
+  state = makeState(mode);
+  ui.btnMode.textContent = `模式：${state.mode === 'daily' ? '每日' : '經典'}`;
   startTurnTimer();
   hideModal();
   render();
@@ -172,6 +203,7 @@ function startNewGame() {
 
 function startTurnTimer() {
   stopTimer();
+  lastTickSec = 999;
   endsAt = Date.now() + state.timePerTurnSec * 1000;
   tick();
   timerId = window.setInterval(tick, 100);
@@ -192,6 +224,11 @@ function tick() {
   const pct = (leftMs / (state.timePerTurnSec * 1000)) * 100;
   ui.timerFill.style.width = `${pct}%`;
 
+  if (leftSec <= 3 && leftSec !== lastTickSec && leftSec > 0) {
+    lastTickSec = leftSec;
+    sfxTick();
+  }
+
   if (leftMs <= 0 && !state.over) {
     // If time runs out, auto-pick the middle option (feels like "safe")
     onChoose(1);
@@ -200,6 +237,13 @@ function tick() {
 
 function onChoose(i: 0 | 1 | 2) {
   if (state.over) return;
+
+  sfxChoice();
+  haptic('light');
+
+  // particle burst near bottom (buttons area)
+  particles.burst({ x: window.innerWidth * (0.25 + 0.25 * i), y: window.innerHeight * 0.78 });
+
   state = applyChoice(state, i);
   // Each new card gets a fresh timer.
   if (!state.over) startTurnTimer();
@@ -220,7 +264,14 @@ function hideModal() {
 
 async function share() {
   const title = getTitle(state.turn, state.resources, state.overReason);
-  const text = makeShareText(state.turn, state.resources, title);
+  const text = makeShareText({
+    turns: state.turn,
+    r: state.resources,
+    title,
+    mode: state.mode,
+    dateKey: state.dateKey,
+    dailyBest: state.dailyBestTurns,
+  });
 
   // Prefer native share on mobile.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -243,7 +294,8 @@ function showHow() {
     "玩法",
     `每回合你只有 <b>20 秒</b>。選一個決策，四個資源會改變：<br/><br/>
      <b>現金</b>歸零或 <b>壓力</b>爆表（=100）就結束。<br/>
-     <b>進度</b>與<b>名聲</b>不會直接讓你死亡，但會影響你能撐多久。<br/><br/>
+     <b>進度</b>與<b>名聲</b>不會直接讓你死亡，但會影響後續。<br/><br/>
+     <b>每日模式</b>：每天同一組隨機序列，大家可比同一天的成績。<br/><br/>
      小技巧：別只追一條資源，崩得會很快。`
   );
 }
@@ -251,6 +303,16 @@ function showHow() {
 ui.c0.addEventListener("click", () => onChoose(0));
 ui.c1.addEventListener("click", () => onChoose(1));
 ui.c2.addEventListener("click", () => onChoose(2));
+ui.btnMode.addEventListener("click", () => {
+  const next: GameMode = state.mode === 'daily' ? 'classic' : 'daily';
+  startNewGame(next);
+  showModal(
+    next === 'daily' ? '每日挑戰' : '經典模式',
+    next === 'daily'
+      ? `每日挑戰每一天都會固定一組事件順序，你可以跟朋友比同一天的成績。<br/><br/>今天是 <b>${state.dateKey}</b>。`
+      : `經典模式每次都是完全隨機。`
+  );
+});
 ui.btnRestart.addEventListener("click", () => startNewGame());
 ui.btnShare.addEventListener("click", () => share());
 ui.btnHow.addEventListener("click", () => showHow());
