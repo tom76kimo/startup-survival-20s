@@ -1,6 +1,7 @@
 import "./style.css";
 import { setupPWA } from "./sw-register";
 import { createFxCanvas, haptic, makeParticleSystem, sfxChoice, sfxGameOver, sfxTick } from "./fx";
+import { showToast } from "./deltaToast";
 import {
   applyChoice,
   defaultResources,
@@ -14,7 +15,9 @@ import {
   yyyymmdd,
   type GameMode,
   type GameState,
+  type Resources,
 } from "./game";
+import type { Delta } from "./events";
 
 const TIME_PER_TURN_SEC = 20;
 
@@ -235,6 +238,36 @@ function tick() {
   }
 }
 
+function fmtDelta(n: number) {
+  return (n > 0 ? `+${n}` : `${n}`);
+}
+
+function showDeltas(delta: Required<Delta>, before: Resources, after: Resources) {
+  const items: Array<{ key: keyof Resources; label: string; anchor: HTMLElement; invert?: boolean }> = [
+    { key: 'cash', label: '現金', anchor: ui.valCash },
+    { key: 'progress', label: '進度', anchor: ui.valProg },
+    { key: 'stress', label: '壓力', anchor: ui.valStress, invert: true },
+    { key: 'rep', label: '名聲', anchor: ui.valRep },
+  ];
+
+  for (const it of items) {
+    const v = delta[it.key] ?? 0;
+    if (v === 0) continue;
+
+    // For stress, + is bad, - is good.
+    const good = it.invert ? v < 0 : v > 0;
+    const bad = it.invert ? v > 0 : v < 0;
+    const kind = good ? 'good' : bad ? 'bad' : 'warn';
+
+    showToast(it.anchor, `${it.label} ${fmtDelta(v)}`, kind);
+  }
+
+  // Stronger haptic on big hits.
+  const stressJump = after.stress - before.stress;
+  const cashDrop = before.cash - after.cash;
+  if (stressJump >= 10 || cashDrop >= 12) haptic('warn');
+}
+
 function onChoose(i: 0 | 1 | 2) {
   if (state.over) return;
 
@@ -244,7 +277,12 @@ function onChoose(i: 0 | 1 | 2) {
   // particle burst near bottom (buttons area)
   particles.burst({ x: window.innerWidth * (0.25 + 0.25 * i), y: window.innerHeight * 0.78 });
 
-  state = applyChoice(state, i);
+  const before = state.resources;
+  const result = applyChoice(state, i);
+  state = result.state;
+
+  showDeltas(result.deltaApplied, before, state.resources);
+
   // Each new card gets a fresh timer.
   if (!state.over) startTurnTimer();
   render();

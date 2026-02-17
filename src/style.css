@@ -253,6 +253,42 @@ body {
   margin-top: 12px;
 }
 
+.deltaToast {
+  position: fixed;
+  transform: translate(-100%, 0);
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  opacity: 0;
+  z-index: 1000;
+  pointer-events: none;
+  border: 1px solid rgba(15, 23, 42, 0.16);
+  box-shadow: 0 14px 30px rgba(2, 6, 23, 0.18);
+  background: rgba(255, 255, 255, 0.92);
+  color: #0b1220;
+  backdrop-filter: blur(6px);
+  transition: transform 140ms ease, opacity 140ms ease;
+}
+
+.deltaToast.show {
+  opacity: 1;
+  transform: translate(-100%, -18px);
+  animation: toastFloat 950ms ease forwards;
+}
+
+.deltaToast.good { border-color: rgba(34, 197, 94, 0.35); }
+.deltaToast.bad { border-color: rgba(239, 68, 68, 0.35); }
+.deltaToast.warn { border-color: rgba(234, 179, 8, 0.35); }
+
+@keyframes toastFloat {
+  0%   { opacity: 0; transform: translate(-100%, 0); }
+  20%  { opacity: 1; transform: translate(-100%, -18px); }
+  80%  { opacity: 1; transform: translate(-100%, -26px); }
+  100% { opacity: 0; transform: translate(-100%, -34px); }
+}
+
 @media (max-width: 360px) {
   .footer { grid-template-columns: 1fr; }
 }

@@ -1,4 +1,4 @@
-import { EVENTS, type EventCard } from "./events";
+import { EVENTS, type EventCard, type Delta } from "./events";
 
 export type Resources = {
   cash: number;
@@ -97,7 +97,12 @@ export function saveDailyBest(date: string, turns: number) {
   localStorage.setItem(dailyKey(date), String(turns));
 }
 
-export function applyChoice(state: GameState, choiceIndex: 0 | 1 | 2): GameState {
+export type ChoiceResult = {
+  state: GameState;
+  deltaApplied: Required<Delta>;
+};
+
+export function applyChoice(state: GameState, choiceIndex: 0 | 1 | 2): ChoiceResult {
   const choice = state.card.choices[choiceIndex];
   const r = state.resources;
 
@@ -105,11 +110,18 @@ export function applyChoice(state: GameState, choiceIndex: 0 | 1 | 2): GameState
   const ramp = Math.min(6, Math.floor(state.turn / 6)); // 0..6
   const stressTax = ramp; // +0..+6
 
+  const deltaApplied: Required<Delta> = {
+    cash: choice.delta.cash,
+    progress: choice.delta.progress,
+    stress: choice.delta.stress + stressTax,
+    rep: choice.delta.rep,
+  };
+
   const next: Resources = {
-    cash: clamp(r.cash + choice.delta.cash, 0, 100),
-    progress: clamp(r.progress + choice.delta.progress, 0, 100),
-    stress: clamp(r.stress + choice.delta.stress + stressTax, 0, 100),
-    rep: clamp(r.rep + choice.delta.rep, 0, 100),
+    cash: clamp(r.cash + deltaApplied.cash, 0, 100),
+    progress: clamp(r.progress + deltaApplied.progress, 0, 100),
+    stress: clamp(r.stress + deltaApplied.stress, 0, 100),
+    rep: clamp(r.rep + deltaApplied.rep, 0, 100),
   };
 
   const nextTurn = state.turn + 1;
@@ -135,14 +147,17 @@ export function applyChoice(state: GameState, choiceIndex: 0 | 1 | 2): GameState
   }
 
   return {
-    ...state,
-    turn: nextTurn,
-    resources: next,
-    bestTurns,
-    dailyBestTurns,
-    over,
-    overReason,
-    card: over ? state.card : pickCard(state.card.id, state.rng),
+    deltaApplied,
+    state: {
+      ...state,
+      turn: nextTurn,
+      resources: next,
+      bestTurns,
+      dailyBestTurns,
+      over,
+      overReason,
+      card: over ? state.card : pickCard(state.card.id, state.rng),
+    },
   };
 }
 
