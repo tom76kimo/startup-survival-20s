@@ -1,7 +1,11 @@
 import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// For GitHub Pages: https://<user>.github.io/<repo>/
+const repoName = 'startup-survival-20s'
+
 export default defineConfig({
+  base: `/${repoName}/`,
   plugins: [
     VitePWA({
       registerType: 'autoUpdate',
@@ -13,16 +17,16 @@ export default defineConfig({
         theme_color: '#0f172a',
         background_color: '#0b1220',
         display: 'standalone',
-        scope: '/',
-        start_url: '/',
+        scope: `/${repoName}/`,
+        start_url: `/${repoName}/`,
         icons: [
           {
-            src: '/icons/icon-192.png',
+            src: `/${repoName}/icons/icon-192.png`,
             sizes: '192x192',
             type: 'image/png',
           },
           {
-            src: '/icons/icon-512.png',
+            src: `/${repoName}/icons/icon-512.png`,
             sizes: '512x512',
             type: 'image/png',
           },
