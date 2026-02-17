@@ -259,7 +259,7 @@ function showDeltas(delta: Required<Delta>, before: Resources, after: Resources)
     const bad = it.invert ? v > 0 : v < 0;
     const kind = good ? 'good' : bad ? 'bad' : 'warn';
 
-    showToast(it.anchor, `${it.label} ${fmtDelta(v)}`, kind);
+    showToast(it.anchor, `${fmtDelta(v)}`, kind);
   }
 
   // Stronger haptic on big hits.

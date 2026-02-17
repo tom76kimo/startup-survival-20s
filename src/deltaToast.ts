@@ -7,17 +7,16 @@ export function showToast(anchor: HTMLElement, text: string, kind: ToastKind) {
   el.className = `deltaToast ${kind}`
   el.textContent = text
 
-  // Position near the value cell (right side)
-  el.style.left = `${Math.min(window.innerWidth - 10, r.right) - 6}px`
-  el.style.top = `${r.top - 6}px`
+  // Position centered above the number (less likely to overlap other UI)
+  const cx = r.left + r.width / 2
+  el.style.left = `${cx}px`
+  el.style.top = `${r.top}px`
 
   document.body.appendChild(el)
 
-  // Trigger animation
   requestAnimationFrame(() => {
     el.classList.add('show')
   })
 
-  const remove = () => el.remove()
-  setTimeout(remove, 950)
+  setTimeout(() => el.remove(), 900)
 }
